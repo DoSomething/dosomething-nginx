@@ -1,0 +1,72 @@
+# This config file is based on Heroku's nginx starter config from
+# the heroku-buildpack-nginx: https://git.io/JsM7Q
+
+
+daemon off;
+
+# Heroku dynos have at least 4 cores.
+worker_processes <%= ENV['NGINX_WORKERS'] || 4 %>;
+
+events {
+	use epoll;
+	accept_mutex on;
+	worker_connections <%= ENV['NGINX_WORKER_CONNECTIONS'] || 1024 %>;
+}
+
+http {
+	gzip on;
+	gzip_comp_level 2;
+	gzip_min_length 512;
+
+	server_tokens off;
+
+	log_format l2met 'measure#nginx.service=$request_time request_id=$http_x_request_id';
+	access_log <%= ENV['NGINX_ACCESS_LOG_PATH'] || 'logs/nginx/access.log' %> l2met;
+	error_log <%= ENV['NGINX_ERROR_LOG_PATH'] || 'logs/nginx/error.log' %>;
+
+	include mime.types;
+	default_type application/octet-stream;
+	sendfile on;
+
+	client_body_timeout 5; # Must read the body in 5 seconds.
+
+	server {
+		listen <%= ENV["PORT"] %>;
+		server_name _;
+		keepalive_timeout 5;
+
+		if ($http_x_forwarded_proto != "https") {
+			return 301 https://$host$request_uri;
+		}
+
+		location / {
+			proxy_pass https://dosomething-phoenix-dev.herokuapp.com;
+			proxy_set_header Host "dosomething-phoenix-dev.herokuapp.com";
+			proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		}
+
+		location ~* \/(v2|v1|images) {
+			proxy_pass https://dosomething-northstar-dev.herokuapp.com;
+			proxy_set_header Host "dosomething-northstar-dev.herokuapp.com";
+			proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		}
+
+		location ~* \/api\/(v3|v2|v1) {
+			proxy_pass https://dosomething-northstar-dev.herokuapp.com;
+			proxy_set_header Host "dosomething-northstar-dev.herokuapp.com";
+			proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		}
+
+		location ~* \/api\/v2\/(blocks|campaigns|posts|zendesk-tickets) {
+			proxy_pass https://dosomething-phoenix-dev.herokuapp.com;
+			proxy_set_header Host "dosomething-phoenix-dev.herokuapp.com";
+			proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		}
+
+		location /graphql {
+			proxy_pass https://graphql.dosomething.org;
+			proxy_set_header Host "graphql.dosomething.org";
+			proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		}
+	}
+}
